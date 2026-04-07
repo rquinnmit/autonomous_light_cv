@@ -27,14 +27,20 @@ class Mode(Enum):
 
 @dataclass
 class PipelineState:
-    """Snapshot of pipeline state pushed to the UI each frame."""
-    frame: np.ndarray
-    heatmap: np.ndarray | None
-    aim_floor: tuple[float, float] | None
-    target_floor: tuple[float, float] | None
-    aim_pixel: tuple[float, float] | None
-    mode: Mode
-    fps: float
+    """Snapshot of pipeline state pushed to the UI each frame.
+
+    UI TEAM: Add the following fields for the Director's Station:
+        camera_connected: bool   — whether the camera is actively returning frames
+        dmx_connected: bool      — whether the DMX adapter is open and transmitting
+    These should also be set in _loop() when pushing state.
+    """
+    frame: np.ndarray                       # raw BGR camera frame at full resolution
+    heatmap: np.ndarray | None              # colorized motion heatmap (same size as frame), or None if not ready
+    aim_floor: tuple[float, float] | None   # smoothed aim position in floor coords (meters)
+    target_floor: tuple[float, float] | None  # raw detection in floor coords before smoothing
+    aim_pixel: tuple[float, float] | None   # current aim position in pixel coords (for drawing on frame)
+    mode: Mode                              # current operating mode (AUTO or MANUAL)
+    fps: float                              # pipeline processing rate
 
 
 class Pipeline:
