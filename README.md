@@ -46,8 +46,7 @@ A real-time operator interface built initially with OpenCV's `imshow` for protot
 
 ## Software Dependencies
 * `python 3.10+`
-* `opencv-python` — camera capture, ArUco detection, homography, frame differencing, display
-* `opencv-contrib-python` — ArUco marker module
+* `opencv-contrib-python` — camera capture, ArUco detection, homography, frame differencing, display (includes base OpenCV)
 * `numpy` — array operations and trigonometry
 * `scipy` — light position triangulation via least-squares optimization
 * `pyserial` — USB-to-DMX512 serial communication
