@@ -1,0 +1,29 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Calibration artifacts
+calibration/*.json
+!calibration/fixtures/
+
+# Logs
+*.log
