@@ -73,6 +73,9 @@ class FloorCalibration:
 
         Returns:
             Dictionary mapping marker ID to its center pixel coordinate (x, y).
+
+        TODO: Discuss whether it would be better to have physical ArUco or digital markers.
+              Current implementation has us printing out ~4 physical ArUco markers, which is more precise.
         """
         corners, ids, _ = self._detector.detectMarkers(frame)
         if ids is None:

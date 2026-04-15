@@ -1,5 +1,6 @@
 opencv-contrib-python
-numpy
+ultralytics
+torch
 scipy
 pyserial
-PyQt5
+PySide6

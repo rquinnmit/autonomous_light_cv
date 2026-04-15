@@ -1,6 +1,9 @@
 """
-Director's Station UI.
+Director's Station UI (PySide6).
 
-Live monitoring, manual override, and calibration wizard.
-Runs on a separate thread from the pipeline, connected via queue.
+Real-time operator interface connected to the pipeline via display_queue.
+Renders the warped top-down floor plan with person-masked motion heatmap
+overlay, tracked person bounding boxes with persistent IDs, and current
+light aim indicators. Supports click-to-aim manual override and a guided
+calibration wizard for ArUco homography and light triangulation setup.
 """
