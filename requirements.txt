@@ -4,3 +4,4 @@ torch
 scipy
 pyserial
 PySide6
+matplotlib

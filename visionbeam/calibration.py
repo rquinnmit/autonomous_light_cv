@@ -6,7 +6,6 @@ Step 2: Light position triangulation from known aim points.
 """
 
 import json
-import math
 import cv2
 import numpy as np
 from scipy.optimize import least_squares
@@ -73,9 +72,6 @@ class FloorCalibration:
 
         Returns:
             Dictionary mapping marker ID to its center pixel coordinate (x, y).
-
-        TODO: Discuss whether it would be better to have physical ArUco or digital markers.
-              Current implementation has us printing out ~4 physical ArUco markers, which is more precise.
         """
         corners, ids, _ = self._detector.detectMarkers(frame)
         if ids is None:
@@ -92,7 +88,8 @@ class FloorCalibration:
         pixel_points: np.ndarray,
         floor_points: np.ndarray,
     ) -> np.ndarray:
-        """Compute the perspective transform from pixels to floor coordinates.
+        """
+        Computes the perspective transform from pixels to floor coordinates.
 
         Args:
             pixel_points: Nx2 array of marker centers in pixel space.
@@ -107,7 +104,7 @@ class FloorCalibration:
         if len(pixel_points) < 4:
             raise ValueError(f"Need at least 4 points, got {len(pixel_points)}")
 
-        H, status = cv2.findHomography(pixel_points, floor_points)
+        H, _ = cv2.findHomography(pixel_points, floor_points)
         if H is None:
             raise ValueError("Homography computation failed — points may be collinear")
 
@@ -115,7 +112,7 @@ class FloorCalibration:
         return H
 
     def pixel_to_floor(self, px: float, py: float) -> tuple[float, float]:
-        """Transform a single pixel coordinate to floor coordinates (meters)."""
+        """Transforms a single pixel coordinate to floor coordinates (meters)."""
         if self.homography is None:
             raise RuntimeError("Homography not computed — run compute_homography first")
 
@@ -124,13 +121,13 @@ class FloorCalibration:
         return float(transformed[0][0][0]), float(transformed[0][0][1])
 
     def warp_frame(self, frame: np.ndarray, output_size: tuple[int, int]) -> np.ndarray:
-        """Warp a camera frame to the top-down floor view (for the UI)."""
+        """Warps a camera frame to the top-down floor view (for the UI)."""
         if self.homography is None:
             raise RuntimeError("Homography not computed — run compute_homography first")
         return cv2.warpPerspective(frame, self.homography, output_size)
 
     def save(self, path: str):
-        """Persist the homography matrix to a JSON file."""
+        """Persists the homography matrix to a JSON file."""
         if self.homography is None:
             raise RuntimeError("Nothing to save — homography not computed")
 
@@ -139,7 +136,7 @@ class FloorCalibration:
 
     @classmethod
     def load(cls, path: str) -> "FloorCalibration":
-        """Load a previously saved homography from JSON."""
+        """Loads a previously saved homography from JSON."""
         cal = cls()
         with open(path) as f:
             data = json.load(f)
@@ -159,7 +156,8 @@ def triangulate_light(
     aim_points: list[dict],
     initial_position: tuple[float, float, float] = (0.0, 0.0, 3.0),
 ) -> LightMount:
-    """Solve for the light's 3D position and angular offsets.
+    """
+    Solves for the light's 3D position and angular offsets.
 
     The operator aims the light at 3+ known floor positions and records
     the fixture's pan/tilt readings at each. This function finds the
