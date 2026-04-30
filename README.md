@@ -1,7 +1,117 @@
 # VisionBeam
 
 ## Introduction
+
 VisionBeam is a spatially-aware autonomous party light that combines computer vision, spatial mapping, and live-event hardware. Rather than relying on pre-programmed lighting cues, the system uses person detection and multi-person tracking to identify who is dancing most and steers a moving head light to follow the action in real time.
+
+This project also serves as a research study for MIT 6.S058, investigating how different computer vision approaches to motion-driven target selection perform under dynamic stage illumination. The core research question: **does combining deep learning detection with classical motion analysis (VisionBeam's hybrid approach) outperform either technique alone when lighting conditions are hostile?**
+
+## Project Structure
+
+```
+visionbeam/               # Live system
+├── calibration.py         # ArUco homography + light triangulation
+├── ik.py                  # Floor-to-pan/tilt spatial translation + EMA smoothing
+├── dmx.py                 # USB-to-DMX512 serial interface + fixture profiles
+├── tracker.py             # Core hybrid method (YOLOv8 + ByteTrack + masked motion heatmap)
+├── pipeline.py            # Threaded camera → tracker → IK → DMX loop
+└── ui.py                  # PySide6 Director's Station UI
+
+evaluation/                # Research evaluation framework
+├── methods.py             # Baseline target-selection methods (frame diff, Farneback, detection-only)
+├── record.py              # Dataset recording tool (5 lighting conditions)
+├── ground_truth.py        # Tracking-marker ground truth extraction
+├── evaluate.py            # Metrics harness (accuracy, jitter, robustness, throughput)
+└── visualize.py           # Matplotlib figure generation for the report
+
+config/
+└── fixture_default.json   # Generic moving head DMX channel map
+```
+
+## Getting Started
+
+### 1. Install
+
+From the repository root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+The first run that loads YOLO may download `yolov8n.pt`.
+
+### 2. Calibration files
+
+The code loads **`calibration/homography.json`** and **`calibration/mount.json`** (see defaults in `main.py` and `evaluation.evaluate`). Those paths are **gitignored** so each venue’s measured values stay on your machine.
+
+**Committed templates** (safe to share, not tied to a real room):
+
+| Template | Role |
+|----------|------|
+| [`calibration/homography.example.json`](calibration/homography.example.json) | **Shape and format** that [`FloorCalibration.save`](visionbeam/calibration.py) / `load` expect: a single key `"homography"` whose value is a **3×3** matrix. The committed matrix is the **identity**. That makes JSON valid and lets you run the app once you copy the file, but **identity does not model a real camera** — pixel coordinates would map naïvely to floor coordinates and metrics would be meaningless until you replace this with a homography computed from four or more measured pixel ↔ floor point pairs. |
+| [`calibration/mount.example.json`](calibration/mount.example.json) | **Shape and format** that [`LightMount.save`](visionbeam/ik.py) / `load` expect: fixture position **x, y, z** (meters on the floor plane, **z** = height), plus **pan_offset** and **tilt_offset** (degrees) linking world angles to DMX. The numbers are **placeholders** (e.g. fixture near origin, **z = 3 m**, defaults matching `LightMount`). Replace after **`triangulate_light(...)`** from measured aim points or manual survey. |
+
+**First-time setup:** copy templates to the filenames the programs read, then overwrite with real calibration when you have measurements.
+
+```bash
+cp calibration/homography.example.json calibration/homography.json
+cp calibration/mount.example.json calibration/mount.json
+```
+
+See **System Pipeline → Spatial Calibration** below for how to measure ArUco floor points and light aim points and generate the real JSON via `FloorCalibration` / `triangulate_light`.
+
+### 3. Smoke test: live pipeline (no DMX)
+
+Runs camera \(\rightarrow\) hybrid tracker \(\rightarrow\) IK. No USB-DMX adapter required.
+
+```bash
+python main.py --no-dmx --camera 0
+```
+
+Press **`q`** to quit, **`a`** to toggle AUTO vs MANUAL (manual click-to-aim is planned for the PySide UI; OpenCV preview only shows tracking).
+
+Use **`--camera 1`** (etc.) if the default device is wrong. On macOS, DMX serial ports are often `/dev/tty.usbserial-*` rather than Linux’s `/dev/ttyUSB0`; pass **`--dmx-port`** when using hardware.
+
+### 4. Research evaluation (offline)
+
+Record clips, extract marker-based ground truth, run metrics, then plot figures.
+
+```bash
+mkdir -p data/clips data/gt results figures
+
+# Record one clip per lighting condition (interactive prompts between takes)
+python -m evaluation.record --camera 0 --output data/clips --duration 30
+
+# Ground truth: match video basename → data/gt/<basename>_gt.csv
+python -m evaluation.ground_truth \
+  --video data/clips/<your_clip>.mp4 \
+  --mode color \
+  --output data/gt \
+  --preview
+```
+
+Tune **`--hsv-low`** and **`--hsv-high`** (comma-separated `H,S,V`) so the colored marker tracks reliably, then re-run without **`--preview`** for the final CSV.
+
+```bash
+python -m evaluation.evaluate \
+  --clips data/clips \
+  --gt data/gt \
+  --calibration calibration/homography.json \
+  --output results
+
+python -m evaluation.visualize --results results --output figures
+```
+
+Optional: **`--trajectory-clip <stem>`** on `visualize` (filename without `.mp4`) for a specific trajectory plot.
+
+**Naming:** For each `data/clips/foo.mp4`, ground truth must be `data/gt/foo_gt.csv`. `evaluate` skips clips with no matching GT file.
+
+### 5. Documentation links
+
+* [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) — lighting conditions, metrics, figures  
+* [`REFERENCES.md`](REFERENCES.md) — papers and benchmarks  
 
 ## System Pipeline
 
@@ -43,6 +153,30 @@ A real-time operator interface built initially with OpenCV's `imshow` for protot
 
 **Architecture:** The pipeline (camera → CV → IK → DMX) runs on a dedicated thread, pushing display frames and metadata via `queue.Queue` to the UI thread. Manual overrides and parameter changes flow back through shared state.
 
+## Research Evaluation
+
+### Methods Compared
+
+| Method | Detection | Motion Signal | Location |
+|---|---|---|---|
+| Frame Differencing | None | Classical (full-frame `absdiff`) | `evaluation/methods.py` |
+| Farneback Dense Flow | None | Classical (dense optical flow) | `evaluation/methods.py` |
+| Detection Only | DL (YOLOv8n + ByteTrack) | None | `evaluation/methods.py` |
+| **Hybrid (VisionBeam)** | **DL (YOLOv8n + ByteTrack)** | **Classical (bbox-masked `absdiff`)** | `visionbeam/tracker.py` |
+
+### Evaluation Protocol
+
+Video clips are recorded in a controlled studio under 5 lighting conditions (ambient, static color, slow drift, strobe, moving beam). A bright tracking marker worn by the subject provides per-frame ground truth via offline color thresholding. Each method is run on every clip; predictions are transformed to floor coordinates via the calibrated homography and compared to ground truth.
+
+### Metrics
+
+* **Targeting accuracy** — mean Euclidean error on the floor plane (meters)
+* **Target stability (jitter)** — total predicted-target path length per second
+* **Robustness** — accuracy degradation from ambient to strobe conditions
+* **Throughput** — FPS on evaluation hardware
+
+See [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) for the full evaluation framework and [`REFERENCES.md`](REFERENCES.md) for related work.
+
 ## Hardware Requirements
 1. **DMX Lighting Fixture:** 1x moving head light with DMX512 pan/tilt control (16-bit recommended)
 2. **Communication Interface:** 1x USB-to-DMX512 adapter (e.g., Enttec Open DMX)
@@ -52,9 +186,10 @@ A real-time operator interface built initially with OpenCV's `imshow` for protot
 
 ## Software Dependencies
 * `python 3.10+`
-* `opencv-contrib-python` — camera capture, ArUco detection, homography, frame differencing, display (includes base OpenCV)
+* `opencv-contrib-python` — camera capture, ArUco detection, homography, optical flow, frame differencing
 * `ultralytics` — YOLOv8-nano person detection and ByteTrack multi-object tracking
 * `torch` — PyTorch runtime required by ultralytics (CPU or CUDA)
 * `scipy` — light position triangulation via least-squares optimization
 * `pyserial` — USB-to-DMX512 serial communication
-* `PySide6` — Director's Station UI (production)
+* `PySide6` — Director's Station UI
+* `matplotlib` — evaluation figure generation

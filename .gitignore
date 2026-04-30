@@ -21,9 +21,9 @@ build/
 .DS_Store
 Thumbs.db
 
-# Calibration artifacts
-calibration/*.json
-!calibration/fixtures/
+# Venue-specific calibration (copy from *.example.json in repo)
+calibration/homography.json
+calibration/mount.json
 
 # Logs
 *.log

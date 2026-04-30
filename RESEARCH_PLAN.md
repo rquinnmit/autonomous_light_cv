@@ -8,13 +8,23 @@ This study aims to evaluate the robustness and accuracy of different computer vi
 
 ## 2. Methods to Compare
 
-We will implement and evaluate 4–5 distinct pipelines that map an input frame to a 2D floor coordinate $(x,y)$ representing the target aim point.
+Our core contribution is the **Hybrid Detection + Motion** method — the target-selection pipeline native to VisionBeam. It combines deep learning (YOLOv8n person detection + ByteTrack multi-object tracking) with classical computer vision (frame-differencing motion heatmap masked to tracked bounding boxes). This hybrid design is motivated by the hypothesis that DL-based person filtering prevents the motion signal from being corrupted by non-human illumination artifacts (beam reflections, strobe flashes, fog scatter), while the classical motion signal within those regions identifies *which* person is most active without requiring pose estimation or action recognition.
 
-1. **Classical Motion (Frame Differencing):** The current baseline. Computes `cv2.absdiff` between consecutive frames, applies a threshold, and finds the spatial peak of a Gaussian-blurred heatmap.
-2. **Classical Dense Flow (Farneback):** Computes dense optical flow (`cv2.calcOpticalFlowFarneback`). The target is derived from the region with the highest motion magnitude.
-3. **Deep Learning Detection (YOLOv8 + ByteTrack):** Uses YOLOv8n to detect persons and ByteTrack to track them. The target is the center of the bounding box with the highest track persistence or nearest to the center.
-4. **Hybrid Detection + Motion (Current System):** Uses YOLOv8 to generate bounding boxes, but masks a frame-differencing heatmap to only include motion *inside* human bounding boxes.
-5. *(Optional)* **Deep Flow (RAFT or GMFlow):** Offline upper-bound evaluation using a DL-based optical flow model to see how much classical flow degrades compared to state-of-the-art flow.
+To evaluate whether this hybrid design is justified — and to isolate the contribution of each component — we compare it against three baseline methods that each omit one or both of the hybrid's components. All methods implement the same interface: given a frame, output a 2D floor coordinate $(x,y)$ representing the target aim point.
+
+### Baselines (implemented in `evaluation/methods.py`)
+
+1. **Classical Motion (Frame Differencing):** Computes `cv2.absdiff` between consecutive frames, applies a threshold, and finds the spatial peak of a Gaussian-blurred heatmap. No person filtering — the motion signal includes non-human sources.
+2. **Classical Dense Flow (Farneback):** Computes dense optical flow (`cv2.calcOpticalFlowFarneback`). The target is derived from the region with the highest motion magnitude. More robust to global brightness shifts than frame differencing, but still susceptible to illumination-induced apparent motion.
+3. **Deep Learning Detection Only (YOLOv8 + ByteTrack):** Uses YOLOv8n to detect persons and ByteTrack to track them. The target is the center of the bounding box with the highest track persistence or nearest to the center. No motion signal — cannot distinguish a stationary person from an active dancer.
+
+### Core Method (implemented in `visionbeam/tracker.py`)
+
+4. **Hybrid Detection + Motion (VisionBeam):** Uses YOLOv8n + ByteTrack to generate tracked bounding boxes, then masks a frame-differencing heatmap to only include motion *inside* those boxes. The peak of the person-masked heatmap identifies the most active person. Includes beam masking (to prevent chasing the system's own light) and a configurable min-motion threshold.
+
+### Optional Upper Bound
+
+5. *(Stretch goal)* **Deep Flow (RAFT):** Offline evaluation using a DL-based optical flow model to see how much classical flow degrades compared to state-of-the-art learned flow under stage lighting.
 
 ## 3. Evaluation Framework (Dataset Collection)
 
